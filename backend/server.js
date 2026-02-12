@@ -21,9 +21,30 @@ app.use((req, res, next) => {
 });
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+let isConnected = false;
+const connectToDatabase = async () => {
+    if (isConnected) {
+        console.log('Using existing MongoDB connection');
+        return;
+    }
+    try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        isConnected = true;
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+    }
+};
+
+// Connect immediately for local dev, or lazy load for Vercel
+if (process.env.NODE_ENV !== 'production') {
+    connectToDatabase();
+} else {
+    // For Vercel, we might want to connect inside the request handler or just let the global scope handle it (it persists in warm lambdas)
+    connectToDatabase();
+}
+
+// ... (Rest of the file remains same, but we need to change how we listen)
 
 const jwt = require('jsonwebtoken');
 
@@ -36,7 +57,7 @@ wss.on('connection', (ws) => {
     let currentUserId = null;
 
     ws.on('message', (message) => {
-        console.log(`[WS Receive] ${message}`);
+        // console.log(`[WS Receive] ${message}`);
         try {
             const data = JSON.parse(message);
 
@@ -122,7 +143,13 @@ app.use('/api/verification', verificationRoutes);
 const backupRoutes = require('./routes/backup');
 app.use('/api/backup', backupRoutes);
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+// Vercel requires exporting the app
+module.exports = app;
+
+// Only listen if run directly (local dev)
+if (require.main === module) {
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
