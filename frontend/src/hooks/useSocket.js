@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
-const WS_URL = 'ws://192.168.18.58:5000'; // Local IP for physical device
+const WS_URL = 'wss://messaging-app-five-gamma.vercel.app';
 
 export const useSocket = () => {
     const ws = useRef(null);

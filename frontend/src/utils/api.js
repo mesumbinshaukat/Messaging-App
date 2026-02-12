@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL = 'http://192.168.18.58:5000/api'; // Local IP for physical device testing
+const API_BASE_URL = 'https://messaging-app-five-gamma.vercel.app/api';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
