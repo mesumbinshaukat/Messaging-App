@@ -30,7 +30,10 @@
         "BLUETOOTH_ADVERTISE",
         "NEARBY_WIFI_DEVICES",
         "SEND_SMS",
-        "READ_PHONE_STATE"
+        "READ_PHONE_STATE",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
       ]
     },
     "web": {
@@ -39,6 +42,11 @@
     "plugins": [
       "expo-sqlite",
       "react-native-ble-plx"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8d624b96-c74c-420a-8404-67844308d529"
+      }
+    }
   }
 }
