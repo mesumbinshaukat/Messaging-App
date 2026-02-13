@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "PM",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/PM.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/PM.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.messaging.app",

@@ -1,4 +1,4 @@
-# Messaging App - Ultra Private & Encrypted
+# PM - Ultra Private & Encrypted
 
 A private, E2E encrypted messaging application built with React Native (Expo) and Node.js.
 
