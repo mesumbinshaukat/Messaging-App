@@ -10,6 +10,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '../utils/media';
 import P2PService from '../services/P2PService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 export default function ChatRoomScreen({ route, navigation }) {
     const { recipient } = route.params;
     const { user } = useAuth();
@@ -17,6 +19,7 @@ export default function ChatRoomScreen({ route, navigation }) {
     const [input, setInput] = useState('');
     const [localMessages, setLocalMessages] = useState([]);
     const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         navigation.setOptions({
@@ -26,12 +29,95 @@ export default function ChatRoomScreen({ route, navigation }) {
 
         // Load messages from local database
         loadLocalMessages();
+        // Sync history from server
+        syncHistoryFromServer();
     }, [recipient]);
 
     const loadLocalMessages = async () => {
         const msgs = await getMessages(user.id, recipient._id);
         setLocalMessages(msgs);
     };
+
+    const syncHistoryFromServer = async () => {
+        try {
+            console.log('Syncing history from server...');
+            const response = await api.get(`/chats/${recipient._id}`);
+            const serverMsgs = response.data;
+
+            if (serverMsgs.length > 0) {
+                for (const msg of serverMsgs) {
+                    try {
+                        // Check if already in local DB
+                        const existing = localMessages.find(m => m.messageId === msg.messageId);
+                        if (existing) continue;
+
+                        // Decrypt
+                        const decrypted = await decryptMessage(msg.content);
+                        const processed = {
+                            senderId: msg.senderId.toString(),
+                            recipientId: msg.recipientId.toString(),
+                            content: decrypted,
+                            timestamp: msg.timestamp,
+                            messageId: msg.messageId,
+                            synced: true
+                        };
+
+                        await saveMessage(processed);
+                        setLocalMessages(prev => {
+                            if (prev.find(p => p.messageId === processed.messageId)) return prev;
+                            return [...prev, processed].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                        });
+                    } catch (decErr) {
+                        console.error('Decryption error during history sync:', decErr);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('History sync failed:', err);
+        }
+    };
+
+    // REAL-TIME SYNC: Listen for messages from useSocket hook
+    useEffect(() => {
+        const processIncomingMessages = async () => {
+            const newMessages = messages.filter(m => m.senderId === recipient._id && m.type === 'chat_message');
+
+            if (newMessages.length > 0) {
+                console.log(`Processing ${newMessages.length} real-time messages...`);
+
+                for (const msg of newMessages) {
+                    try {
+                        // Decrypt incoming message
+                        const decrypted = await decryptMessage(msg.content);
+
+                        const processedMsg = {
+                            senderId: msg.senderId,
+                            recipientId: user.id,
+                            content: decrypted,
+                            timestamp: msg.timestamp,
+                            messageId: msg.messageId,
+                            synced: true
+                        };
+
+                        // Save to local DB and update UI
+                        await saveMessage(processedMsg);
+                        setLocalMessages(prev => {
+                            // Avoid duplicates
+                            if (prev.find(p => p.messageId === processedMsg.messageId)) return prev;
+                            return [...prev, processedMsg];
+                        });
+                    } catch (err) {
+                        console.error('Failed to decrypt/save incoming message:', err);
+                    }
+                }
+
+                // Clear processed messages from hook state
+                setMessages(prev => prev.filter(m => m.senderId !== recipient._id));
+            }
+        };
+
+        processIncomingMessages();
+    }, [messages, recipient._id]);
 
 
     const handleSend = async () => {
@@ -121,11 +207,11 @@ export default function ChatRoomScreen({ route, navigation }) {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#0b141a' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0b141a' }} edges={['top', 'left', 'right']}>
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
                 style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 25}
             >
                 <View style={styles.container}>
                     <ImageBackground
@@ -140,7 +226,14 @@ export default function ChatRoomScreen({ route, navigation }) {
                             contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 20 }}
                         />
 
-                        <View style={[styles.inputContainer, { backgroundColor: colors.card }]}>
+                        <View style={[
+                            styles.inputContainer,
+                            {
+                                backgroundColor: colors.card,
+                                paddingBottom: Math.max(insets.bottom, 15),
+                                paddingTop: 10
+                            }
+                        ]}>
                             <View style={styles.inputWrapper}>
                                 <TextInput
                                     style={[styles.input, { color: colors.text }]}
@@ -197,8 +290,10 @@ const styles = StyleSheet.create({
     },
     inputContainer: {
         flexDirection: 'row',
-        padding: 10,
-        alignItems: 'flex-end'
+        paddingHorizontal: 10,
+        alignItems: 'flex-end',
+        borderTopWidth: 0.5,
+        borderTopColor: 'rgba(255, 255, 255, 0.1)'
     },
     inputWrapper: {
         flex: 1,

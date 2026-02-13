@@ -8,10 +8,16 @@ export const useSocket = () => {
     const [messages, setMessages] = useState([]);
 
     useEffect(() => {
+        let reconnectTimeout;
+
         const connect = async () => {
             const token = await SecureStore.getItemAsync('user_token');
-            if (!token) return;
+            if (!token) {
+                console.log('No token found, skipping WS connection');
+                return;
+            }
 
+            console.log('Attempting WS connection...');
             ws.current = new WebSocket(WS_URL);
 
             ws.current.onopen = () => {
@@ -26,8 +32,14 @@ export const useSocket = () => {
                 }
             };
 
-            ws.current.onclose = () => {
-                console.log('WS Disconnected');
+            ws.current.onclose = (e) => {
+                console.log(`WS Disconnected: ${e.code}. Reconnecting in 3s...`);
+                reconnectTimeout = setTimeout(connect, 3000);
+            };
+
+            ws.current.onerror = (err) => {
+                console.error('WS Error:', err);
+                ws.current.close();
             };
         };
 
@@ -35,6 +47,7 @@ export const useSocket = () => {
 
         return () => {
             if (ws.current) ws.current.close();
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
         };
     }, []);
 

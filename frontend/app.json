@@ -20,6 +20,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.messaging.app",
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",

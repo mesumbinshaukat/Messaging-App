@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('ws');
+const Message = require('./models/Message');
 
 const app = express();
 const server = http.createServer(app);
@@ -58,7 +59,7 @@ wss.on('connection', (ws) => {
     console.log('New WebSocket connection attempt');
     let currentUserId = null;
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
         // console.log(`[WS Receive] ${message}`);
         try {
             const data = JSON.parse(message);
@@ -85,13 +86,23 @@ wss.on('connection', (ws) => {
             if (data.type === 'chat_message') {
                 const { recipientId, content, messageId, timestamp } = data;
 
+                // PERSISTENCE: Save to MongoDB (Encrypted blob)
+                const newMessage = new Message({
+                    senderId: currentUserId,
+                    recipientId: recipientId,
+                    content: content, // This is already encrypted by the client
+                    messageId: messageId,
+                    timestamp: timestamp || new Date()
+                });
+                await newMessage.save().catch(err => console.error('Failed to save message to DB:', err));
+
                 // Construct message to relay
                 const relayData = JSON.stringify({
                     type: 'chat_message',
                     senderId: currentUserId,
                     content,
                     messageId,
-                    timestamp
+                    timestamp: timestamp || new Date()
                 });
 
                 // Send to all recipient's active connections
@@ -144,6 +155,10 @@ app.use('/api/verification', verificationRoutes);
 // Backup Routes
 const backupRoutes = require('./routes/backup');
 app.use('/api/backup', backupRoutes);
+
+// Chat History Routes
+const chatRoutes = require('./routes/chats');
+app.use('/api/chats', chatRoutes);
 
 // Vercel requires exporting the app
 module.exports = app;
