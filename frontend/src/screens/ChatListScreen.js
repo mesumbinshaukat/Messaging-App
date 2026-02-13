@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import api from '../utils/api';
 import { hashForSync } from '../utils/crypto';
+import { getAllLocalContacts, saveContact } from '../utils/database';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '@react-navigation/native';
 
@@ -16,8 +17,23 @@ export default function ChatListScreen({ navigation }) {
     const { colors } = useTheme();
 
     useEffect(() => {
-        syncContacts();
+        const init = async () => {
+            await loadLocalContacts();
+            await syncContacts();
+        };
+        init();
     }, []);
+
+    const loadLocalContacts = async () => {
+        const locals = await getAllLocalContacts();
+        if (locals.length > 0) {
+            setChats(prev => {
+                const combined = [...prev, ...locals];
+                // Unique by _id
+                return combined.filter((v, i, a) => a.findIndex(t => t._id === v._id) === i);
+            });
+        }
+    };
 
     const syncContacts = async () => {
         console.log('Starting contact sync...');
@@ -48,7 +64,7 @@ export default function ChatListScreen({ navigation }) {
                     }
                 }
 
-                const response = await api.post('/auth/sync-contacts', { contactHashes: hashes });
+                const response = await api.post('/contacts/sync', { hashes: hashes });
                 // Simulate recent messages for UI
                 const enrichedChats = response.data.map(c => ({
                     ...c,
@@ -73,7 +89,7 @@ export default function ChatListScreen({ navigation }) {
         try {
             // Hash the input and search for user
             const hash = await hashForSync(searchInput.trim());
-            const response = await api.post('/auth/sync-contacts', { contactHashes: [hash] });
+            const response = await api.post('/contacts/sync', { hashes: [hash] });
 
             if (response.data.length === 0) {
                 Alert.alert('Not Found', 'No user found with this phone/email');
@@ -96,13 +112,17 @@ export default function ChatListScreen({ navigation }) {
                 lastMessage: 'Tap to start chatting',
                 time: 'Now'
             };
-            setChats([...chats, newChat]);
+
+            await saveContact(newChat); // Persist locally!
+
+            setChats(prev => [...prev, newChat]);
             setModalVisible(false);
             setSearchInput('');
             Alert.alert('Success', `${foundUser.displayName} added to your chats!`);
         } catch (err) {
             console.error('Add user error:', err);
-            Alert.alert('Error', 'Failed to add user');
+            const msg = err.response?.data?.message || 'Failed to add user. Check your connection.';
+            Alert.alert('Error', msg);
         }
     };
 

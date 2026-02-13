@@ -37,6 +37,10 @@ const UserSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    pushToken: {
+        type: String, // Store Expo Push Token
+        default: null,
+    },
 });
 
 module.exports = mongoose.model('User', UserSchema);

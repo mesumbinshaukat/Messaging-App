@@ -20,9 +20,12 @@ router.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Hash for discovery
-        const hashedPhoneNumber = crypto.createHash('sha256').update(phoneNumber).digest('hex');
-        const hashedEmail = crypto.createHash('sha256').update(email).digest('hex');
+        // Normalize and Hash for discovery
+        const normalizedPhone = phoneNumber.trim();
+        const normalizedEmail = email.trim().toLowerCase();
+
+        const hashedPhoneNumber = crypto.createHash('sha256').update(normalizedPhone).digest('hex');
+        const hashedEmail = crypto.createHash('sha256').update(normalizedEmail).digest('hex');
 
         // Create user
         user = new User({
@@ -54,8 +57,12 @@ router.post('/login', async (req, res) => {
         const { login, password } = req.body; // login can be phoneNumber or email
 
         // Find user
+        const normalizedLogin = login.trim().toLowerCase();
         const user = await User.findOne({
-            $or: [{ phoneNumber: login }, { email: login }]
+            $or: [
+                { phoneNumber: login.trim() },
+                { email: normalizedLogin }
+            ]
         });
 
         if (!user) {
@@ -79,28 +86,5 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Sync Contacts (Hashed Discovery)
-router.post('/sync-contacts', async (req, res) => {
-    try {
-        const { contactHashes } = req.body;
-
-        if (!contactHashes || !Array.isArray(contactHashes)) {
-            return res.status(400).json({ message: 'contactHashes array is required' });
-        }
-
-        // Find users whose hashed phone/email matches
-        const users = await User.find({
-            $or: [
-                { hashedPhoneNumber: { $in: contactHashes } },
-                { hashedEmail: { $in: contactHashes } }
-            ]
-        }).select('_id displayName publicKey');
-
-        res.json(users);
-    } catch (err) {
-        console.error('Sync contacts error:', err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
 
 module.exports = router;

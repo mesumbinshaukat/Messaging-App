@@ -5,6 +5,9 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('ws');
 const Message = require('./models/Message');
+const User = require('./models/User');
+const { Expo } = require('expo-server-sdk');
+const expo = new Expo();
 
 const app = express();
 const server = http.createServer(app);
@@ -113,9 +116,27 @@ wss.on('connection', (ws) => {
                         }
                     });
                 } else {
-                    // TODO: Handle offline message (store in DB)
                     console.log(`Recipient ${recipientId} is offline`);
                 }
+
+                // PUSH NOTIFICATION: Send even if online (to ensure alert)
+                try {
+                    const recipientUser = await User.findById(recipientId);
+                    if (recipientUser && recipientUser.pushToken && Expo.isExpoPushToken(recipientUser.pushToken)) {
+                        const senderUser = await User.findById(currentUserId);
+                        await expo.sendPushNotificationsAsync([{
+                            to: recipientUser.pushToken,
+                            sound: 'default',
+                            title: senderUser ? senderUser.displayName : 'New Message',
+                            body: 'You have a new encrypted message',
+                            data: { senderId: currentUserId, type: 'chat_message' },
+                        }]);
+                        console.log(`Push notification sent to ${recipientId}`);
+                    }
+                } catch (pushErr) {
+                    console.error('Push notification error:', pushErr);
+                }
+
                 return;
             }
 
@@ -159,6 +180,10 @@ app.use('/api/backup', backupRoutes);
 // Chat History Routes
 const chatRoutes = require('./routes/chats');
 app.use('/api/chats', chatRoutes);
+
+// Notification Routes
+const notificationRoutes = require('./routes/notifications');
+app.use('/api/notifications', notificationRoutes);
 
 // Vercel requires exporting the app
 module.exports = app;

@@ -19,6 +19,14 @@ export const initDatabase = async () => {
             
             CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipientId);
             CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(senderId);
+
+            CREATE TABLE IF NOT EXISTS contacts (
+                _id TEXT PRIMARY KEY,
+                displayName TEXT,
+                publicKey TEXT,
+                phoneNumber TEXT,
+                email TEXT
+            );
         `);
 
         console.log('Database initialized successfully');
@@ -65,6 +73,26 @@ export const getUnsyncedMessages = async () => {
         return result;
     } catch (error) {
         console.error('Failed to get unsynced messages:', error);
+        return [];
+    }
+};
+export const saveContact = async (contact) => {
+    try {
+        await db.runAsync(
+            'INSERT OR REPLACE INTO contacts (_id, displayName, publicKey, phoneNumber, email) VALUES (?, ?, ?, ?, ?)',
+            [contact._id, contact.displayName, contact.publicKey, contact.phoneNumber || '', contact.email || '']
+        );
+    } catch (error) {
+        console.error('Failed to save contact:', error);
+    }
+};
+
+export const getAllLocalContacts = async () => {
+    try {
+        const result = await db.getAllAsync('SELECT * FROM contacts');
+        return result;
+    } catch (error) {
+        console.error('Failed to get local contacts:', error);
         return [];
     }
 };

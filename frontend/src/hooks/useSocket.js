@@ -60,7 +60,9 @@ export const useSocket = () => {
                 timestamp: new Date().toISOString(),
                 messageId: Math.random().toString(36).substr(2, 9)
             }));
+            return true;
         }
+        return false;
     };
 
     return { messages, sendMessage, setMessages };

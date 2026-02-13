@@ -20,7 +20,7 @@ router.post('/sync', auth, async (req, res) => {
                 { hashedPhoneNumber: { $in: hashes } },
                 { hashedEmail: { $in: hashes } }
             ]
-        }).select('displayName publicKey phoneNumber email');
+        }).select('_id displayName publicKey phoneNumber email');
 
         res.json(matchedUsers);
     } catch (err) {

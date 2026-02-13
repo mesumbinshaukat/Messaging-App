@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api from '../utils/api';
+import { registerForPushNotificationsAsync, sendTokenToServer } from '../utils/notifications';
 
 const AuthContext = createContext();
 
@@ -19,6 +20,10 @@ export const AuthProvider = ({ children }) => {
 
             if (token && userData) {
                 setUser(JSON.parse(userData));
+                // Refresh push token on start
+                registerForPushNotificationsAsync().then(t => {
+                    if (t) sendTokenToServer(t);
+                });
             }
         } catch (e) {
             console.error('Failed to load storage data', e);
@@ -34,6 +39,10 @@ export const AuthProvider = ({ children }) => {
         await SecureStore.setItemAsync('user_token', token);
         await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
         setUser(userData);
+
+        // Register Push Token
+        const pToken = await registerForPushNotificationsAsync();
+        if (pToken) await sendTokenToServer(pToken);
     };
 
     const logout = async () => {

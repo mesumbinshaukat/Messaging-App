@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, ImageBackground, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSocket } from '../hooks/useSocket';
+import api from '../utils/api';
 import { encryptMessage, decryptMessage } from '../utils/crypto';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '@react-navigation/native';
@@ -125,18 +126,23 @@ export default function ChatRoomScreen({ route, navigation }) {
 
         try {
             console.log('Recipient object:', JSON.stringify(recipient));
+            if (!recipient.publicKey) {
+                Alert.alert('Encryption Error', 'Recipient has no public key. They must log in once to generate keys.');
+                return;
+            }
             // E2E Encrypt
             const encrypted = await encryptMessage(input, recipient.publicKey);
 
             // Send via WebSocket if online, else P2P/SMS
+            let delivered = false;
             try {
-                // We'll check socket state from useSocket hook (which needs to expose connected state)
-                // For now, try sending via socket, if it fails or throws, go to P2P.
-                // Note: socket.emit usually doesn't throw on disconnect, so we need explicit check.
-                // Assuming sendMessage handles it or we add a check.
-                sendMessage(recipient._id, JSON.stringify(encrypted));
+                delivered = sendMessage(recipient._id, JSON.stringify(encrypted));
             } catch (socketErr) {
-                console.log('Socket send failed, trying P2P/SMS...', socketErr);
+                console.log('Socket send error:', socketErr);
+            }
+
+            if (!delivered) {
+                console.log('Socket down, trying P2P/SMS...');
                 await P2PService.sendMessage(encrypted, recipient);
             }
 
