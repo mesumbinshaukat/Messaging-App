@@ -49,3 +49,9 @@ Hostinger shared hosting does not support `pm2` or custom system services. Follo
 
 ### Server Upload
 Upload files to `public_html/api` or a subdomain folder using FTP or the Hostinger File Manager.
+
+### Android App Build Command (APK)
+`eas build -p android --profile preview`
+
+### Instant Content Sync
+`eas update --branch preview --message "Your update description"`

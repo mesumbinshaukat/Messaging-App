@@ -41,8 +41,15 @@
     },
     "plugins": [
       "expo-sqlite",
-      "react-native-ble-plx"
+      "react-native-ble-plx",
+      "expo-updates"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/8d624b96-c74c-420a-8404-67844308d529"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "eas": {
         "projectId": "8d624b96-c74c-420a-8404-67844308d529"
