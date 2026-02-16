@@ -1,57 +1,71 @@
-# PM - Ultra Private & Encrypted
+# PM - Ultra Private & Encrypted 🛡️
 
-A private, E2E encrypted messaging application built with React Native (Expo) and Node.js.
+A state-of-the-art private messaging application (rebranded as **PM**) built with React Native (Expo) and Node.js. Designed for total privacy, PM ensures that your messages never leave your device in a readable format.
 
-## Features
-- **End-to-End Encryption**: NaCl-based encryption (tweetnacl) with device-generated keys.
-- **Privacy-Focused Contact Sync**: Uses SHA-256 hashes to discover contacts without uploading cleartext data.
-- **In-house SMTP**: Verification emails sent directly via raw sockets.
-- **Hybrid Transport**: WebSocket relay for online use; infrastructure ready for P2P/Mesh (Bluetooth/WiFi).
+## 🚀 Key Features
 
-## Local Development Setup
+- **End-to-End Encryption (E2E)**: NaCl-based encryption (`tweetnacl`) with device-generated keys. Every message uses a unique cryptographic **nonce** for maximum security.
+- **Privacy-Focused Contact Sync**: Discovers contacts using SHA-256 hashing. Your phone book is never uploaded in cleartext.
+- **Push Notifications**: Real-time alerts using Expo Push Tokens, designed to maintain privacy by showing generic "New Encrypted Message" alerts.
+- **Local Persistence**: Full chat history and manually added contacts are stored securely on-device using **SQLite** (`expo-sqlite`).
+- **Hybrid Transport & Fallbacks**: 
+    - **Primary**: Real-time WebSocket relay.
+    - **Secondary**: Bluetooth Advertising & Scanning (P2P).
+    - **Tertiary**: SMS Signal Fallback (sends full encrypted packets over SMS when offline).
+- **In-house SMTP**: Secure OTP verification emails sent via raw sockets to avoid third-party email service tracking.
 
-### Requirement
+## 🏗️ Technical Architecture
+
+### Security Protocol
+1.  **Key Gen**: On first launch, the app generates a 32-byte NaCl keypair. The private key never leaves the device's **SecureStore**.
+2.  **Encryption**: Messages are encrypted using the sender's private key and the recipient's public key (`nacl.box`).
+3.  **Persistence**: The backend (MongoDB) stores only the encrypted `content`, `nonce`, and metadata. It has **zero knowledge** of your conversations.
+
+### Data Flow
+- **Real-time**: WebSocket -> Server Relay -> Push Notification (simultaneous).
+- **Offline**: SQLite -> Local Queue -> P2P/SMS Discovery.
+
+## 🛠️ Local Development
+
+### Requirements
 - **Node.js** v22+
-- **MongoDB** (Local instance, default port 27017)
-- **Expo Go** (On Android device)
+- **MongoDB** (Local or Atlas)
+- **Expo Go** or **EAS Dev Build**
 
-### Backend
-1. `cd backend`
-2. `npm install`
-3. Create `.env` (already provided for local):
-   ```env
-   PORT=5000
-   MONGODB_URI=mongodb://localhost:27017/messaging_app
-   JWT_SECRET=your_secret
-   ```
-4. `node server.js`
+### Setup
+1.  **Backend**:
+    ```bash
+    cd backend
+    npm install
+    # Set MONGODB_URI and JWT_SECRET in .env
+    node server.js
+    ```
+2.  **Frontend**:
+    ```bash
+    cd frontend
+    npm install
+    # Update API_URL in src/utils/api.js
+    npx expo start
+    ```
 
-### Frontend
-1. `cd frontend`
-2. `npm install`
-3. Update `API_BASE_URL` in `src/utils/api.js` to your computer's local IP.
-4. `npx expo start`
-5. Scan QR code with Expo Go.
+## 📦 Deployment & Scaling
 
-## Hosting on Hostinger (Shared Hosting)
+### Vercel (Backend)
+The backend is optimized for Vercel. Ensure `vercel.json` is configured to handle WebSocket upgrades (though a VPS is recommended for heavy WebSocket traffic).
 
-Hostinger shared hosting does not support `pm2` or custom system services. Follow these steps:
+### Android APK Build
+The app uses **EAS (Expo Application Services)** for professional builds:
+```bash
+# Generate a preview APK with the PM branding and icon
+eas build -p android --profile preview
+```
 
-### What to Upload
-1. The entire `backend` directory (excluding `node_modules`).
-2. Run `npm install` via SSH (if available) or upload local `node_modules`.
+### Instant Updates (OTA)
+Push critical fixes directly to user devices without a full APK reinstall:
+```bash
+eas update --branch preview --message "Fixed E2E nonce persistence"
+```
 
-### Deployment Instructions
-1. **Node.js App**: Hostinger's "Node.js Selector" or the Node.js menu allows you to point to `server.js`.
-2. **MongoDB**: Since Hostinger shared hosting lacks MongoDB, use **MongoDB Atlas** (Free Tier) and update `MONGODB_URI` in `.env`.
-3. **WebSockets**: If Hostinger blocks port 5000/WebSockets, the app will fail to relay messages in real-time. Use a VPS for full compatibility.
-4. **No sudo/pm2**: The Node.js application is managed by Hostinger's environment. Ensure your `package.json` has a `"start": "node server.js"` script.
-
-### Server Upload
-Upload files to `public_html/api` or a subdomain folder using FTP or the Hostinger File Manager.
-
-### Android App Build Command (APK)
-`eas build -p android --profile preview`
-
-### Instant Content Sync
-`eas update --branch preview --message "Your update description"`
+---
+## 📜 License
+Private and Confidential. All rights reserved.
