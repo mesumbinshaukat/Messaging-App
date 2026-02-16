@@ -26,29 +26,38 @@ app.use((req, res, next) => {
     next();
 });
 
-// MongoDB Connection
-let isConnected = false;
+// MongoDB Connection Singleton
+let cachedPromise = null;
+
 const connectToDatabase = async () => {
-    if (isConnected) {
-        console.log('Using existing MongoDB connection');
-        return;
+    if (cachedPromise) {
+        return cachedPromise;
     }
-    try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        isConnected = true;
+
+    console.log('Connecting to MongoDB Atlas...');
+    cachedPromise = mongoose.connect(process.env.MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000,
+        bufferCommands: false, // Fail fast if not connected
+    }).then(() => {
         console.log('Connected to MongoDB');
-    } catch (err) {
+    }).catch(err => {
+        cachedPromise = null;
         console.error('MongoDB connection error:', err);
-    }
+        throw err;
+    });
+
+    return cachedPromise;
 };
 
-// Connect immediately for local dev, or lazy load for Vercel
-if (process.env.NODE_ENV !== 'production') {
-    connectToDatabase();
-} else {
-    // For Vercel, we might want to connect inside the request handler or just let the global scope handle it (it persists in warm lambdas)
-    connectToDatabase();
-}
+// Middleware to ensure DB is connected before processing requests
+app.use(async (req, res, next) => {
+    try {
+        await connectToDatabase();
+        next();
+    } catch (err) {
+        res.status(500).json({ error: 'Database connection failed', details: err.message });
+    }
+});
 
 // ... (Rest of the file remains same, but we need to change how we listen)
 
