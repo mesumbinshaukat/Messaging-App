@@ -13,6 +13,7 @@ export const initDatabase = async () => {
                 senderId TEXT NOT NULL,
                 recipientId TEXT NOT NULL,
                 content TEXT NOT NULL,
+                nonce TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
                 synced INTEGER DEFAULT 0
             );
@@ -29,6 +30,14 @@ export const initDatabase = async () => {
             );
         `);
 
+        // Migration: Add nonce column to messages if it doesn't exist
+        try {
+            await db.execAsync("ALTER TABLE messages ADD COLUMN nonce TEXT DEFAULT ''");
+            console.log("Migration: Added nonce column to messages table");
+        } catch (e) {
+            // Probably already exists
+        }
+
         console.log('Database initialized successfully');
     } catch (error) {
         console.error('Database initialization failed:', error);
@@ -38,8 +47,8 @@ export const initDatabase = async () => {
 export const saveMessage = async (message) => {
     try {
         await db.runAsync(
-            'INSERT OR REPLACE INTO messages (messageId, senderId, recipientId, content, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?)',
-            [message.messageId, message.senderId, message.recipientId, message.content, message.timestamp, message.synced ? 1 : 0]
+            'INSERT OR REPLACE INTO messages (messageId, senderId, recipientId, content, nonce, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [message.messageId, message.senderId, message.recipientId, message.content, message.nonce || '', message.timestamp, message.synced ? 1 : 0]
         );
     } catch (error) {
         console.error('Failed to save message:', error);

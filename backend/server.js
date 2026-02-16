@@ -87,13 +87,18 @@ wss.on('connection', (ws) => {
 
             // Message Relay
             if (data.type === 'chat_message') {
-                const { recipientId, content, messageId, timestamp } = data;
+                const { recipientId, content, nonce, messageId, timestamp } = data;
+
+                if (!content || !nonce) {
+                    return ws.send(JSON.stringify({ type: 'error', message: 'Missing content or nonce' }));
+                }
 
                 // PERSISTENCE: Save to MongoDB (Encrypted blob)
                 const newMessage = new Message({
                     senderId: currentUserId,
                     recipientId: recipientId,
-                    content: content, // This is already encrypted by the client
+                    content: content,
+                    nonce: nonce,
                     messageId: messageId,
                     timestamp: timestamp || new Date()
                 });
@@ -104,6 +109,7 @@ wss.on('connection', (ws) => {
                     type: 'chat_message',
                     senderId: currentUserId,
                     content,
+                    nonce,
                     messageId,
                     timestamp: timestamp || new Date()
                 });

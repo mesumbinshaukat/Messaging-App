@@ -15,6 +15,10 @@ const MessageSchema = new mongoose.Schema({
         type: String, // This will be the encrypted blob (base64/hex)
         required: true
     },
+    nonce: {
+        type: String,
+        required: true
+    },
     messageId: {
         type: String,
         required: true,

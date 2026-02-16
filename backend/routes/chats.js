@@ -12,7 +12,7 @@ router.get('/:recipientId', auth, async (req, res) => {
                 { senderId: req.userId, recipientId: req.params.recipientId },
                 { senderId: req.params.recipientId, recipientId: req.userId }
             ]
-        }).sort({ timestamp: 1 }).limit(100);
+        }).sort({ timestamp: 1 }).limit(100).select('senderId recipientId content nonce messageId timestamp');
 
         res.json(messages);
     } catch (err) {

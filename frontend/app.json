@@ -7,7 +7,7 @@
     "icon": "./assets/PM.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/PM.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -38,7 +38,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/PM.png"
     },
     "plugins": [
       "expo-sqlite",

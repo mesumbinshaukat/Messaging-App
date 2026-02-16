@@ -51,12 +51,13 @@ export const useSocket = () => {
         };
     }, []);
 
-    const sendMessage = (recipientId, content) => {
+    const sendMessage = (recipientId, packet) => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({
                 type: 'chat_message',
                 recipientId,
-                content,
+                content: packet.content,
+                nonce: packet.nonce,
                 timestamp: new Date().toISOString(),
                 messageId: Math.random().toString(36).substr(2, 9)
             }));

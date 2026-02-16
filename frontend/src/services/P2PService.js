@@ -49,7 +49,7 @@ class P2PService {
                 console.log('Sending via SMS fallback...');
                 await SMS.sendSMSAsync(
                     [recipient.phoneNumber],
-                    `[Encrypted Msg]: ${message.content}`
+                    `[PM_MSG]:${JSON.stringify(message)}`
                 );
                 return true;
             }

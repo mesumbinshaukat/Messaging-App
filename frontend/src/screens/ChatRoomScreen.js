@@ -52,12 +52,13 @@ export default function ChatRoomScreen({ route, navigation }) {
                         const existing = localMessages.find(m => m.messageId === msg.messageId);
                         if (existing) continue;
 
-                        // Decrypt
-                        const decrypted = await decryptMessage(msg.content);
+                        // Decrypt: nonce and senderPublicKey are required
+                        const decrypted = await decryptMessage(msg.content, msg.nonce, recipient.publicKey);
                         const processed = {
                             senderId: msg.senderId.toString(),
                             recipientId: msg.recipientId.toString(),
                             content: decrypted,
+                            nonce: msg.nonce,
                             timestamp: msg.timestamp,
                             messageId: msg.messageId,
                             synced: true
@@ -89,12 +90,13 @@ export default function ChatRoomScreen({ route, navigation }) {
                 for (const msg of newMessages) {
                     try {
                         // Decrypt incoming message
-                        const decrypted = await decryptMessage(msg.content);
+                        const decrypted = await decryptMessage(msg.content, msg.nonce, recipient.publicKey);
 
                         const processedMsg = {
                             senderId: msg.senderId,
                             recipientId: user.id,
                             content: decrypted,
+                            nonce: msg.nonce,
                             timestamp: msg.timestamp,
                             messageId: msg.messageId,
                             synced: true
@@ -131,29 +133,30 @@ export default function ChatRoomScreen({ route, navigation }) {
                 return;
             }
             // E2E Encrypt
-            const encrypted = await encryptMessage(input, recipient.publicKey);
+            const encryptedPacket = await encryptMessage(input, recipient.publicKey);
 
             // Send via WebSocket if online, else P2P/SMS
             let delivered = false;
             try {
-                delivered = sendMessage(recipient._id, JSON.stringify(encrypted));
+                delivered = sendMessage(recipient._id, encryptedPacket);
             } catch (socketErr) {
                 console.log('Socket send error:', socketErr);
             }
 
             if (!delivered) {
                 console.log('Socket down, trying P2P/SMS...');
-                await P2PService.sendMessage(encrypted, recipient);
+                await P2PService.sendMessage(encryptedPacket, recipient);
             }
 
             // Add to local UI and database
             const myMsg = {
                 senderId: user.id,
                 recipientId: recipient._id,
-                content: input, // Show clear text locally
+                content: input,
+                nonce: encryptedPacket.nonce, // Store the nonce we generated
                 timestamp: new Date().toISOString(),
                 messageId: Math.random().toString(36).substr(2, 9),
-                synced: false
+                synced: delivered
             };
 
             await saveMessage(myMsg);
