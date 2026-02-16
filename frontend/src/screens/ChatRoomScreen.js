@@ -135,20 +135,7 @@ export default function ChatRoomScreen({ route, navigation }) {
             // E2E Encrypt
             const encryptedPacket = await encryptMessage(input, recipient.publicKey);
 
-            // Send via WebSocket if online, else P2P/SMS
-            let delivered = false;
-            try {
-                delivered = sendMessage(recipient._id, encryptedPacket);
-            } catch (socketErr) {
-                console.log('Socket send error:', socketErr);
-            }
-
-            if (!delivered) {
-                console.log('Socket down, trying P2P/SMS...');
-                await P2PService.sendMessage(encryptedPacket, recipient);
-            }
-
-            // Add to local UI and database
+            // Add to local UI and database immediately (snappy UI)
             const myMsg = {
                 senderId: user.id,
                 recipientId: recipient._id,
@@ -156,17 +143,33 @@ export default function ChatRoomScreen({ route, navigation }) {
                 nonce: encryptedPacket.nonce, // Store the nonce we generated
                 timestamp: new Date().toISOString(),
                 messageId: Math.random().toString(36).substr(2, 9),
-                synced: delivered
+                synced: false // Initially false, as delivery is handled asynchronously
             };
 
             await saveMessage(myMsg);
             setLocalMessages((prev) => [...prev, myMsg]);
             setInput('');
+
+            // Send via WebSocket if online, else P2P/SMS
+            // We do this asynchronously to keep the UI snappy
+            (async () => {
+                let delivered = false;
+                try {
+                    delivered = sendMessage(recipient._id, encryptedPacket);
+                    console.log(`[DEBUG] WS Send Attempt for ${myMsg.messageId}: ${delivered ? 'SUCCESS' : 'SOCKET_OFFLINE'}`);
+                } catch (socketErr) {
+                    console.log(`[DEBUG] WS Send Error for ${myMsg.messageId}:`, socketErr);
+                }
+
+                if (!delivered) {
+                    console.log(`[DEBUG] Switching to P2P/SMS for ${myMsg.messageId}...`);
+                    await P2PService.sendMessage(encryptedPacket, recipient);
+                }
+            })();
+
         } catch (err) {
-            console.error('Encryption/Send failed', err);
-            if (err.message.includes('No P2P route')) {
-                Alert.alert('Delivery Failed', 'No internet, Bluetooth peer, or SMS route available.');
-            }
+            console.error('Send logic failed', err);
+            Alert.alert('Error', 'Could not process message for encryption.');
         }
     };
 

@@ -97,12 +97,15 @@ wss.on('connection', (ws) => {
             // Message Relay
             if (data.type === 'chat_message') {
                 const { recipientId, content, nonce, messageId, timestamp } = data;
+                console.log(`[DEBUG] Message ${messageId} received from ${currentUserId} for ${recipientId}`);
 
                 if (!content || !nonce) {
+                    console.log(`[DEBUG] Message ${messageId} FAILED: Missing content or nonce`);
                     return ws.send(JSON.stringify({ type: 'error', message: 'Missing content or nonce' }));
                 }
 
                 // PERSISTENCE: Save to MongoDB (Encrypted blob)
+                console.log(`[DEBUG] Message ${messageId}: Saving to MongoDB...`);
                 const newMessage = new Message({
                     senderId: currentUserId,
                     recipientId: recipientId,
@@ -111,7 +114,9 @@ wss.on('connection', (ws) => {
                     messageId: messageId,
                     timestamp: timestamp || new Date()
                 });
-                await newMessage.save().catch(err => console.error('Failed to save message to DB:', err));
+                await newMessage.save()
+                    .then(() => console.log(`[DEBUG] Message ${messageId}: Saved to DB successfully`))
+                    .catch(err => console.error(`[DEBUG] Message ${messageId} DB SAVE FAIL:`, err));
 
                 // Construct message to relay
                 const relayData = JSON.stringify({
@@ -125,19 +130,26 @@ wss.on('connection', (ws) => {
 
                 // Send to all recipient's active connections
                 if (clients.has(recipientId)) {
-                    clients.get(recipientId).forEach(client => {
+                    const recipientClients = clients.get(recipientId);
+                    console.log(`[DEBUG] Message ${messageId}: Attempting relay to ${recipientClients.size} active connections for ${recipientId}`);
+
+                    recipientClients.forEach(client => {
                         if (client.readyState === ws.OPEN) {
                             client.send(relayData);
+                            console.log(`[DEBUG] Message ${messageId}: Relay sent to connection`);
+                        } else {
+                            console.log(`[DEBUG] Message ${messageId}: Skipping relay - connection state is ${client.readyState}`);
                         }
                     });
                 } else {
-                    console.log(`Recipient ${recipientId} is offline`);
+                    console.log(`[DEBUG] Message ${messageId}: Recipient ${recipientId} is OFFLINE (No active WS connections)`);
                 }
 
                 // PUSH NOTIFICATION: Send even if online (to ensure alert)
                 try {
                     const recipientUser = await User.findById(recipientId);
                     if (recipientUser && recipientUser.pushToken && Expo.isExpoPushToken(recipientUser.pushToken)) {
+                        console.log(`[DEBUG] Message ${messageId}: Triggering Push Notification to ${recipientUser.pushToken}`);
                         const senderUser = await User.findById(currentUserId);
                         await expo.sendPushNotificationsAsync([{
                             to: recipientUser.pushToken,
@@ -146,10 +158,12 @@ wss.on('connection', (ws) => {
                             body: 'You have a new encrypted message',
                             data: { senderId: currentUserId, type: 'chat_message' },
                         }]);
-                        console.log(`Push notification sent to ${recipientId}`);
+                        console.log(`[DEBUG] Message ${messageId}: Push notification sent successfully`);
+                    } else {
+                        console.log(`[DEBUG] Message ${messageId}: No valid push token for ${recipientId}`);
                     }
                 } catch (pushErr) {
-                    console.error('Push notification error:', pushErr);
+                    console.error(`[DEBUG] Message ${messageId} PUSH FAIL:`, pushErr);
                 }
 
                 return;
