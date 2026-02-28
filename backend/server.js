@@ -12,10 +12,26 @@ const expo = new Expo();
 const app = express();
 const server = http.createServer(app);
 const wss = new Server({ server });
+const rateLimit = require('express-rate-limit');
+
+// Rate limiting
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: { error: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10, // Brute force protection: 10 attempts per 15 mins
+    message: { error: 'Too many login/register attempts, please try again later.' }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api/', apiLimiter);
+app.use('/api/auth/', authLimiter);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -72,7 +88,6 @@ wss.on('connection', (ws) => {
     let currentUserId = null;
 
     ws.on('message', async (message) => {
-        // console.log(`[WS Receive] ${message}`);
         try {
             const data = JSON.parse(message);
 
@@ -90,6 +105,25 @@ wss.on('connection', (ws) => {
                 return;
             }
 
+            // Keep-alive handling
+            if (data.type === 'ping') {
+                ws.send(JSON.stringify({ type: 'pong' }));
+                return;
+            }
+
+            if (data.type === 'typing') {
+                wss.clients.forEach((client) => {
+                    if (client.userId === data.recipientId && client.readyState === 1) {
+                        client.send(JSON.stringify({
+                            type: 'typing',
+                            senderId: ws.userId,
+                            isTyping: data.isTyping
+                        }));
+                    }
+                });
+                return;
+            }
+
             if (!currentUserId) {
                 return ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated' }));
             }
@@ -97,6 +131,17 @@ wss.on('connection', (ws) => {
             // Message Relay
             if (data.type === 'chat_message') {
                 const { recipientId, content, nonce, messageId, timestamp } = data;
+
+                // SEC-2: Server-side validation
+                if (!content || typeof content !== 'string' || !nonce || nonce.length !== 32) {
+                    console.error(`[SEC-VULN] Message ${messageId}: Invalid payload format from ${currentUserId}`);
+                    return;
+                }
+
+                // SEC-4: Metadata Minimization (Minute precision)
+                const now = new Date();
+                const minuteTimestamp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+
                 console.log(`[DEBUG] Message ${messageId} received from ${currentUserId} for ${recipientId}`);
 
                 if (!content || !nonce) {
@@ -112,7 +157,8 @@ wss.on('connection', (ws) => {
                     content: content,
                     nonce: nonce,
                     messageId: messageId,
-                    timestamp: timestamp || new Date()
+                    timestamp: minuteTimestamp,
+                    status: 'pending' // For SEC-4: server identifies undelivered
                 });
                 await newMessage.save()
                     .then(() => console.log(`[DEBUG] Message ${messageId}: Saved to DB successfully`))
@@ -125,25 +171,42 @@ wss.on('connection', (ws) => {
                     content,
                     nonce,
                     messageId,
-                    timestamp: timestamp || new Date()
+                    timestamp: minuteTimestamp
                 });
 
                 // Send to all recipient's active connections
+                let recipientIsOnline = false;
                 if (clients.has(recipientId)) {
                     const recipientClients = clients.get(recipientId);
                     console.log(`[DEBUG] Message ${messageId}: Attempting relay to ${recipientClients.size} active connections for ${recipientId}`);
 
                     recipientClients.forEach(client => {
-                        if (client.readyState === ws.OPEN) {
+                        if (client.readyState === 1) { // WebSocket.OPEN = 1
                             client.send(relayData);
+                            relayed = true;
                             console.log(`[DEBUG] Message ${messageId}: Relay sent to connection`);
                         } else {
                             console.log(`[DEBUG] Message ${messageId}: Skipping relay - connection state is ${client.readyState}`);
                         }
                     });
+
+                    if (relayed) {
+                        // SEC-4: Auto-delete delivered messages (Phase 2: Use TTL or background cleanup)
+                        // For now, mark as delivered so cleanup script knows
+                        await Message.updateOne({ messageId }, { $set: { status: 'delivered' } });
+                    }
                 } else {
                     console.log(`[DEBUG] Message ${messageId}: Recipient ${recipientId} is OFFLINE (No active WS connections)`);
                 }
+
+                recipientIsOnline = relayed;
+
+                // Delivery Acknowledgement
+                ws.send(JSON.stringify({
+                    type: 'delivery_ack',
+                    messageId: messageId,
+                    status: recipientIsOnline ? 'delivered' : 'sent'
+                }));
 
                 // PUSH NOTIFICATION: Send even if online (to ensure alert)
                 try {
@@ -190,6 +253,11 @@ app.get('/', (req, res) => {
     res.send('Messaging App Backend is running');
 });
 
+// Health check for Render keep-alive
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 // Auth Routes
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
@@ -213,6 +281,26 @@ app.use('/api/chats', chatRoutes);
 // Notification Routes
 const notificationRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationRoutes);
+
+// SEC-4: Cleanup delivered messages
+app.post('/api/admin/cleanup', async (req, res) => {
+    // Only allow if specific secret is provided (for cron)
+    if (req.headers['x-cleanup-secret'] !== process.env.JWT_SECRET) {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const result = await Message.deleteMany({
+            $or: [
+                { status: 'delivered' }, // Delete if delivered
+                { timestamp: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } // Or if older than 24h
+            ]
+        });
+        res.json({ deletedCount: result.deletedCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Vercel requires exporting the app
 module.exports = app;

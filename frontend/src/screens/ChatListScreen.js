@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import ConnectionBanner from '../components/ConnectionBanner';
+import KeyBackupModal from '../components/KeyBackupModal';
+import { MaterialIcons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import * as Contacts from 'expo-contacts';
 import api from '../utils/api';
 import { hashForSync } from '../utils/crypto';
@@ -9,10 +14,11 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '@react-navigation/native';
 
 export default function ChatListScreen({ navigation }) {
-    const [chats, setChats] = useState([]);
+    const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
     const [searchInput, setSearchInput] = useState('');
+    const [showBackupWarning, setShowBackupWarning] = useState(false);
     const { user } = useAuth();
     const { colors } = useTheme();
 
@@ -22,12 +28,48 @@ export default function ChatListScreen({ navigation }) {
             await syncContacts();
         };
         init();
+
+        const checkBackup = async () => {
+            const warned = await SecureStore.getItemAsync('key_backup_warned');
+            if (!warned) {
+                setShowBackupWarning(true);
+            }
+        };
+        checkBackup();
     }, []);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            updateLastMessages();
+        }, [contacts.length])
+    );
+
+    const dismissBackupWarning = async () => {
+        await SecureStore.setItemAsync('key_backup_warned', 'true');
+        setShowBackupWarning(false);
+    };
+
+    const updateLastMessages = async () => {
+        const { getMessages } = require('../utils/database');
+        const updatedChats = await Promise.all(contacts.map(async (chat) => {
+            const msgs = await getMessages(user.id, chat._id);
+            if (msgs.length > 0) {
+                const last = msgs[msgs.length - 1];
+                return {
+                    ...chat,
+                    lastMessage: last.content,
+                    time: new Date(last.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                };
+            }
+            return chat;
+        }));
+        setContacts(updatedChats);
+    };
 
     const loadLocalContacts = async () => {
         const locals = await getAllLocalContacts();
         if (locals.length > 0) {
-            setChats(prev => {
+            setContacts(prev => {
                 const combined = [...prev, ...locals];
                 // Unique by _id
                 return combined.filter((v, i, a) => a.findIndex(t => t._id === v._id) === i);
@@ -71,7 +113,7 @@ export default function ChatListScreen({ navigation }) {
                     lastMessage: 'Tap to start chatting',
                     time: '12:00 PM'
                 }));
-                setChats(enrichedChats);
+                setContacts(enrichedChats);
             }
         } catch (err) {
             console.error('Sync failed', err);
@@ -99,7 +141,7 @@ export default function ChatListScreen({ navigation }) {
             const foundUser = response.data[0];
 
             // Check if already in chats
-            if (chats.find(c => c._id === foundUser._id)) {
+            if (contacts.find(c => c._id === foundUser._id)) {
                 Alert.alert('Already Added', 'This user is already in your chat list');
                 setModalVisible(false);
                 setSearchInput('');
@@ -115,7 +157,7 @@ export default function ChatListScreen({ navigation }) {
 
             await saveContact(newChat); // Persist locally!
 
-            setChats(prev => [...prev, newChat]);
+            setContacts(prev => [...prev, newChat]);
             setModalVisible(false);
             setSearchInput('');
             Alert.alert('Success', `${foundUser.displayName} added to your chats!`);
@@ -153,15 +195,32 @@ export default function ChatListScreen({ navigation }) {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-            <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <SafeAreaView style={styles.container}>
+            <ConnectionBanner transport={transport} />
+            <KeyBackupModal visible={showBackupWarning} onDismiss={dismissBackupWarning} />
+            
+            <View style={{ flex: 1 }}>
                 <FlatList
-                    data={chats}
+                    data={contacts}
                     keyExtractor={(item) => item._id}
                     renderItem={renderItem}
-                    ListEmptyComponent={
-                        <Text style={styles.emptyText}>No contacts found on the app yet.</Text>
-                    }
+                    ListHeaderComponent={() => (
+                        <View style={styles.header}>
+                            <Text style={styles.headerTitle}>Chats</Text>
+                        </View>
+                    )}
+                    ListEmptyComponent={() => (
+                        <View style={styles.emptyContainer}>
+                            <MaterialIcons name="chat-bubble-outline" size={80} color="#2a3942" />
+                            <Text style={styles.emptyText}>No chats yet</Text>
+                            <TouchableOpacity 
+                                style={styles.addButton} 
+                                onPress={() => setModalVisible(true)}
+                            >
+                                <Text style={styles.addButtonText}>➕ Add your first contact</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 />
 
                 {/* Add User Modal */}
@@ -221,8 +280,10 @@ export default function ChatListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
+    container: { flex: 1, backgroundColor: '#111b21' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    header: { padding: 20, paddingTop: 10 },
+    headerTitle: { color: '#e9edef', fontSize: 24, fontWeight: 'bold' },
     chatRow: { flexDirection: 'row', padding: 15, alignItems: 'center', borderBottomWidth: 0.5 },
     avatar: { width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center' },
     avatarText: { color: '#8696a0', fontSize: 24, fontWeight: 'bold' },
@@ -231,7 +292,10 @@ const styles = StyleSheet.create({
     name: { fontSize: 17, fontWeight: 'bold' },
     time: { color: '#8696a0', fontSize: 12 },
     lastMsg: { color: '#8696a0', fontSize: 14 },
-    emptyText: { color: '#8696a0', textAlign: 'center', marginTop: 50, fontSize: 16 },
+    emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
+    emptyText: { color: '#8696a0', fontSize: 18, marginTop: 20 },
+    addButton: { marginTop: 25, backgroundColor: '#00a884', paddingHorizontal: 25, paddingVertical: 12, borderRadius: 25 },
+    addButtonText: { color: '#111b21', fontWeight: 'bold', fontSize: 16 },
     fab: {
         position: 'absolute',
         right: 20,

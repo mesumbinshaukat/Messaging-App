@@ -103,6 +103,31 @@ export const decryptMessage = async (encryptedBase64, nonceBase64, senderPublicK
 };
 
 /**
+ * Secretbox encryption for Ratchet (Symmetric)
+ */
+export const encryptWithRatchet = async (msg, keyBase64) => {
+    const key = decodeBase64(keyBase64);
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(msg);
+    const encrypted = nacl.secretbox(encoded, nonce, key);
+    return {
+        content: encodeBase64(encrypted),
+        nonce: encodeBase64(nonce)
+    };
+};
+
+export const decryptWithRatchet = async (encryptedBase64, nonceBase64, keyBase64) => {
+    const key = decodeBase64(keyBase64);
+    const nonce = decodeBase64(nonceBase64);
+    const encrypted = decodeBase64(encryptedBase64);
+    const decrypted = nacl.secretbox.open(encrypted, nonce, key);
+    if (!decrypted) throw new Error('Ratchet decryption failed');
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+};
+
+/**
  * Hash a string (phone/email) for privacy-focused sync.
  */
 export const hashForSync = async (text) => {

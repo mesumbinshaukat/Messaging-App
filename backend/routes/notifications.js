@@ -11,7 +11,7 @@ router.post('/register', auth, async (req, res) => {
 
     try {
         await User.findByIdAndUpdate(req.userId, { pushToken });
-        console.log(`Push token registered for user: ${req.user.userId}`);
+        console.log(`Push token registered for user: ${req.userId}`);
         res.json({ message: 'Push token registered successfully' });
     } catch (err) {
         console.error('Error registering push token:', err);

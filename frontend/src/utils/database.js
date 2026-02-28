@@ -30,12 +30,37 @@ export const initDatabase = async () => {
             );
         `);
 
-        // Migration: Add nonce column to messages if it doesn't exist
+        // Migration: Add status column to messages if it doesn't exist
         try {
-            await db.execAsync("ALTER TABLE messages ADD COLUMN nonce TEXT DEFAULT ''");
-            console.log("Migration: Added nonce column to messages table");
+            await db.execAsync("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'sent'");
+            console.log("Migration: Added status column to messages table");
         } catch (e) {
-            // Probably already exists
+            // Already exists
+        }
+
+        // Migration: Add transport column to messages if it doesn't exist
+        try {
+            await db.execAsync("ALTER TABLE messages ADD COLUMN transport TEXT DEFAULT 'websocket'");
+            console.log("Migration: Added transport column to messages table");
+        } catch (e) {
+            // Already exists
+        }
+
+        // Migration: Create ratchet_state table if it doesn't exist
+        try {
+            await db.execAsync(`
+                CREATE TABLE IF NOT EXISTS ratchet_state (
+                    conversationId TEXT PRIMARY KEY,
+                    sendChainKey TEXT,
+                    receiveChainKey TEXT,
+                    sendCount INTEGER DEFAULT 0,
+                    receiveCount INTEGER DEFAULT 0,
+                    updatedAt TEXT
+                );
+            `);
+            console.log("Migration: Created ratchet_state table");
+        } catch (e) {
+            console.error('Migration failed for ratchet_state:', e);
         }
 
         console.log('Database initialized successfully');
@@ -47,8 +72,18 @@ export const initDatabase = async () => {
 export const saveMessage = async (message) => {
     try {
         await db.runAsync(
-            'INSERT OR REPLACE INTO messages (messageId, senderId, recipientId, content, nonce, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [message.messageId, message.senderId, message.recipientId, message.content, message.nonce || '', message.timestamp, message.synced ? 1 : 0]
+            'INSERT OR REPLACE INTO messages (messageId, senderId, recipientId, content, nonce, timestamp, synced, status, transport) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                message.messageId, 
+                message.senderId, 
+                message.recipientId, 
+                message.content, 
+                message.nonce || '', 
+                message.timestamp, 
+                message.synced ? 1 : 0,
+                message.status || 'sent',
+                message.transport || 'websocket'
+            ]
         );
     } catch (error) {
         console.error('Failed to save message:', error);
@@ -103,5 +138,25 @@ export const getAllLocalContacts = async () => {
     } catch (error) {
         console.error('Failed to get local contacts:', error);
         return [];
+    }
+};
+
+export const getRatchetState = async (conversationId) => {
+    try {
+        return await db.getFirstAsync('SELECT * FROM ratchet_state WHERE conversationId = ?', [conversationId]);
+    } catch (error) {
+        console.error('Failed to get ratchet state:', error);
+        return null;
+    }
+};
+
+export const saveRatchetState = async (state) => {
+    try {
+        await db.runAsync(
+            'INSERT OR REPLACE INTO ratchet_state (conversationId, sendChainKey, receiveChainKey, updatedAt) VALUES (?, ?, ?, ?)',
+            [state.chatId, state.sendChainKey, state.recvChainKey, new Date().toISOString()]
+        );
+    } catch (error) {
+        console.error('Failed to save ratchet state:', error);
     }
 };
